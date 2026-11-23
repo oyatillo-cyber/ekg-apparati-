@@ -1,0 +1,2121 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D EKG & Reanimatsiya Simulyatori — Abdumannonov Oyatillo</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Three.js & OrbitControls -->
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #060a12;
+            color: #e2e8f0;
+            user-select: none;
+        }
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.4);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(56, 189, 248, 0.35);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(56, 189, 248, 0.65);
+        }
+        .glass-panel {
+            background: rgba(10, 17, 30, 0.88);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(51, 65, 85, 0.78);
+            box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.75);
+        }
+        .btn-active {
+            background-color: #0284c7 !important;
+            border-color: #38bdf8 !important;
+            color: #ffffff !important;
+            box-shadow: 0 0 14px rgba(56, 189, 248, 0.45);
+        }
+        .tab-active {
+            border-bottom: 2px solid #38bdf8;
+            color: #38bdf8 !important;
+            background: rgba(14, 165, 233, 0.14);
+        }
+        input[type=range] {
+            accent-color: #0ea5e9;
+        }
+        @keyframes pulse-danger {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.75); }
+            50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        }
+        .alarm-flash {
+            animation: pulse-danger 1s infinite;
+        }
+        @keyframes shock-flash {
+            0% { background-color: rgba(255, 255, 255, 0.88); }
+            100% { background-color: rgba(255, 255, 255, 0); }
+        }
+        .screen-shock-effect {
+            animation: shock-flash 0.48s ease-out forwards;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.6)); }
+            50% { filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.9)); }
+        }
+        .logo-glow {
+            animation: pulse-glow 2.5s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body>
+
+<div id="canvas-container">
+    <!-- Razryad (Defibrillyatsiya) chaqnash effekti -->
+    <div id="shock-overlay" class="fixed inset-0 pointer-events-none z-50"></div>
+
+    <!-- YUQORI STATUS HEADER & BRENDING -->
+    <div class="fixed top-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none z-20">
+        <!-- Chap blok: Maxsus Logo, Loyiha nomi, Muallif va Vital ko'rsatkichlar -->
+        <div class="glass-panel rounded-2xl px-3.5 py-2 flex items-center gap-3.5 pointer-events-auto">
+            <!-- Custom Medical Heart-Pulse SVG Logo -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500/25 via-emerald-500/20 to-indigo-600/30 border border-sky-400/50 flex items-center justify-center shadow-inner logo-glow shrink-0">
+                    <svg class="w-7 h-7" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M18 31.5C18 31.5 4.5 22.8 4.5 12.75C4.5 8.4 7.9 5 12.1 5C14.7 5 16.9 6.3 18 8.2C19.1 6.3 21.3 5 23.9 5C28.1 5 31.5 8.4 31.5 12.75C31.5 22.8 18 31.5 18 31.5Z" fill="url(#heartGrad)" fill-opacity="0.25" stroke="#38bdf8" stroke-width="1.8"/>
+                        <path d="M5.5 17.5H11.5L13.8 12.5L16.5 23.5L19.5 10.5L22.2 19.5L24.2 17.5H30.5" stroke="#34d399" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <defs>
+                            <linearGradient id="heartGrad" x1="4.5" y1="5" x2="31.5" y2="31.5" gradientUnits="userSpaceOnUse">
+                                <stop stop-color="#38bdf8"/>
+                                <stop offset="1" stop-color="#10b981"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+
+                <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <div id="status-led" class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"></div>
+                        <h1 class="text-sm font-extrabold tracking-tight text-white">
+                            3D EKG & Reanimatsiya Simulyatori
+                        </h1>
+                        <span onclick="switchTab('author')" class="cursor-pointer text-[10px] font-bold bg-gradient-to-r from-sky-500/25 to-emerald-500/25 text-sky-300 border border-sky-400/50 px-2 py-0.5 rounded-full hover:border-sky-300 transition">
+                            Abdumannonov Oyatillo
+                        </span>
+                    </div>
+                    <p class="text-[11px] text-slate-400">CARDIO-PRO 12X • Interaktiv Klinik Trenajyor</p>
+                </div>
+            </div>
+
+            <div class="h-8 w-[1px] bg-slate-700/80 hidden lg:block"></div>
+
+            <!-- Vital ko'rsatkichlar -->
+            <div class="hidden sm:flex items-center gap-4">
+                <div>
+                    <span class="text-[10px] uppercase text-slate-400 block">Yurak Urishi</span>
+                    <span id="hud-bpm" class="mono text-base font-bold text-emerald-400">72 <small class="text-[11px] font-normal">zarba/daq</small></span>
+                </div>
+                <div>
+                    <span class="text-[10px] uppercase text-slate-400 block">SpO₂</span>
+                    <span id="hud-spo2" class="mono text-base font-bold text-sky-400">98<small class="text-[11px] font-normal">%</small></span>
+                </div>
+                <div class="hidden xl:block">
+                    <span class="text-[10px] uppercase text-slate-400 block">Qon Bosimi</span>
+                    <span id="hud-nibp" class="mono text-sm font-bold text-amber-300">120/80 <small class="text-[10px] font-normal">mm.sim.ust</small></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- O'ng yuqori tezkor tugmalar -->
+        <div class="glass-panel rounded-2xl p-1.5 flex items-center gap-1.5 pointer-events-auto">
+            <button id="btn-power-top" onclick="togglePower()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600/25 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-600/40 transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                <span id="power-label-top">Yoqilgan</span>
+            </button>
+            <button id="btn-sound-top" onclick="toggleSound()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 border border-slate-600 text-slate-300 hover:bg-slate-700 transition">
+                <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+                <span id="sound-label-top">Ovoz: O'chiq</span>
+            </button>
+            <button onclick="toggleSidePanel()" id="toggle-panel-btn" class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-sky-600/20 border border-sky-500/40 text-sky-300 hover:bg-sky-600/35 transition">
+                Panel
+            </button>
+        </div>
+    </div>
+
+    <!-- 3D OBYEKT HOVER TOOLTIP -->
+    <div id="hover-tooltip" class="fixed pointer-events-none z-40 hidden glass-panel rounded-xl px-3.5 py-2 text-xs max-w-xs border-sky-500/60">
+        <div id="tooltip-title" class="font-bold text-sky-400 mb-0.5"></div>
+        <div id="tooltip-desc" class="text-slate-300 text-[11px] leading-snug"></div>
+    </div>
+
+    <!-- BILDIRISHNOMA (TOAST MESSAGE BOX) -->
+    <div id="toast-msg" class="fixed top-20 left-1/2 -translate-x-1/2 z-40 hidden glass-panel border-sky-500/70 rounded-xl px-4 py-2 text-xs font-semibold text-sky-100 shadow-2xl transition-all">
+    </div>
+
+    <!-- O'NG TARAFDAGI BOSHQARUV PANELI (4 TA BO'LIMLI TAB) -->
+    <div id="side-panel" class="fixed top-16 right-3 bottom-14 w-[390px] max-w-[94vw] glass-panel rounded-2xl flex flex-col z-20 transition-all duration-300">
+        <!-- Tab Navigatsiyasi (Aniq tartibda) -->
+        <div class="grid grid-cols-4 border-b border-slate-700/80 text-[10px] sm:text-[11px] font-bold">
+            <button onclick="switchTab('author')" id="tab-btn-author" class="tab-active py-2.5 px-1.5 text-center transition rounded-tl-2xl leading-tight">
+                Abdumannonov Oyatillo
+            </button>
+            <button onclick="switchTab('control')" id="tab-btn-control" class="py-2.5 px-1.5 text-center text-slate-400 hover:text-slate-200 transition">
+                Boshqaruv
+            </button>
+            <button onclick="switchTab('scenarios')" id="tab-btn-scenarios" class="py-2.5 px-1.5 text-center text-slate-400 hover:text-slate-200 transition">
+                Ssenariylar
+            </button>
+            <button onclick="switchTab('quiz')" id="tab-btn-quiz" class="py-2.5 px-1.5 text-center text-slate-400 hover:text-slate-200 transition rounded-tr-2xl">
+                Tashxis testi
+            </button>
+        </div>
+
+        <!-- TAB 1: ABDUMANNONOV OYATILLO (LOYIHA MUALLIFI VA MA'LUMOTNOMA) -->
+        <div id="tab-author" class="p-3.5 overflow-y-auto space-y-3.5 flex-1 text-xs">
+            <!-- Muallif Kartasi -->
+            <div class="bg-gradient-to-br from-sky-950/75 via-slate-900 to-emerald-950/55 border border-sky-500/45 p-3.5 rounded-2xl relative overflow-hidden">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-sky-500 to-emerald-400 p-[2px] shrink-0 shadow-lg">
+                        <div class="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center font-extrabold text-base text-sky-300 mono">
+                            AO
+                        </div>
+                    </div>
+                    <div>
+                        <span class="inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 mb-1">
+                            Loyiha muallifi
+                        </span>
+                        <h2 class="text-base font-extrabold text-white tracking-tight">Abdumannonov Oyatillo</h2>
+                        <p class="text-[11px] text-sky-300/90 font-medium">3D Tibbiy Simulyatsiya & Veb-texnologiyalar</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loyiha haqida batafsil ma'lumot (Tahrirlanadigan qism) -->
+            <div class="bg-slate-900/85 border border-slate-700/80 p-3 rounded-xl space-y-2">
+                <div class="flex items-center justify-between">
+                    <h3 class="font-bold text-sky-400 uppercase text-[10px] tracking-wider flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        Loyiha haqida
+                    </h3>
+                    <div class="flex items-center gap-1.5">
+                        <button id="btn-edit-author" onclick="toggleEditAuthorInfo()" class="text-[10px] px-2 py-0.5 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/40 hover:bg-sky-500/30 font-semibold transition">
+                            Matnni tahrirlash
+                        </button>
+                        <button id="btn-reset-author" onclick="resetAuthorInfo()" class="hidden text-[10px] px-2 py-0.5 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 font-semibold transition">
+                            Asliga qaytarish
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Ko'rish rejimi -->
+                <div id="author-info-view" class="text-[11.5px] text-slate-200 leading-relaxed space-y-2">
+                </div>
+
+                <!-- Tahrirlash rejimi -->
+                <div id="author-info-edit" class="hidden space-y-2">
+                    <textarea id="author-info-textarea" rows="5" class="w-full bg-slate-950 border border-sky-500/60 rounded-xl p-2.5 text-[11.5px] text-slate-100 focus:outline-none leading-relaxed"></textarea>
+                    <button onclick="saveAuthorInfo()" class="w-full py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition">
+                        ✓ O'zgarishlarni saqlash
+                    </button>
+                </div>
+            </div>
+
+            <!-- 6 ta Asosiy Texnologik Imkoniyatlar -->
+            <div class="space-y-2">
+                <h3 class="font-bold text-slate-400 uppercase text-[10px] tracking-wider">Asosiy texnologik imkoniyatlar</h3>
+                <div class="grid grid-cols-2 gap-2 text-[11px]">
+                    <div class="bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl">
+                        <div class="font-bold text-sky-300 mb-0.5">1. 3D Reanimatsiya Palatasi</div>
+                        <p class="text-[10.5px] text-slate-400 leading-snug">Krovat, kislorod konsoli, tomchilatgich va nafas oluvchi bemor modeli.</p>
+                    </div>
+                    <div class="bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl">
+                        <div class="font-bold text-emerald-300 mb-0.5">2. 12-Kanalli Jonli EKG</div>
+                        <p class="text-[10.5px] text-slate-400 leading-snug">8 xil yurak patologiyasi va real vaqtdagi P-QRS-T to'lqin sintezi.</p>
+                    </div>
+                    <div class="bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl">
+                        <div class="font-bold text-rose-300 mb-0.5">3. Defibrillyator Moduli</div>
+                        <p class="text-[10.5px] text-slate-400 leading-snug">100J–360J energiya, zaryadlash ovozi va 3D dazmollar razryad animatsiyasi.</p>
+                    </div>
+                    <div class="bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl">
+                        <div class="font-bold text-amber-300 mb-0.5">4. Klinik Ssenariylar</div>
+                        <p class="text-[10.5px] text-slate-400 leading-snug">Shoshilinch reanimatsiya holatlari bo'yicha amaliy vaziyatli masalalar.</p>
+                    </div>
+                    <div class="bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl">
+                        <div class="font-bold text-indigo-300 mb-0.5">5. Tashxis Testi Rejimi</div>
+                        <p class="text-[10.5px] text-slate-400 leading-snug">Ekrandagi kardiogrammaga qarab tashxis qo'yish va ball yig'ish tizimi.</p>
+                    </div>
+                    <div class="bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl">
+                        <div class="font-bold text-cyan-300 mb-0.5">6. Millimetrli PNG Eksport</div>
+                        <p class="text-[10.5px] text-slate-400 leading-snug">3D termoprinter hamda yuqori sifatli kardiogramma lentasini yuklab olish.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tezkor Boshqaruv Yo'riqnomasi -->
+            <div class="bg-slate-900/70 border border-slate-800 p-3 rounded-xl space-y-1.5">
+                <h3 class="font-bold text-slate-300 text-[11px]">Tezkor boshqaruv yo'riqnomasi:</h3>
+                <ul class="text-[11px] text-slate-400 space-y-1 list-disc list-inside">
+                    <li><b>Sichqoncha chap tugmasi:</b> 3D palatani aylantirish va obyektlarni bosish.</li>
+                    <li><b>G'ildirakcha (Scroll):</b> Yaqinlashtirish va uzoqlashtirish (Zoom).</li>
+                    <li><b>3D Tugmalar va Elektrodlar:</b> Apparat tugmalari va bemordagi 5 ta elektrodni bevosita 3D sahnada bosish mumkin.</li>
+                    <li><b>Klaviatura (1–4):</b> Kamera rakurslarini tezkor almashtirish.</li>
+                </ul>
+            </div>
+
+            <button onclick="switchTab('control')" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-emerald-600 hover:from-sky-500 hover:to-emerald-500 text-white font-bold shadow-lg transition">
+                Simulyator Boshqaruviga O'tish →
+            </button>
+        </div>
+
+        <!-- TAB 2: BOSHQARUV (SIMULYATOR) -->
+        <div id="tab-control" class="hidden p-3.5 overflow-y-auto space-y-3.5 flex-1 text-xs">
+            <!-- 1. Yurak Ritmi va Patologiyalar -->
+            <div>
+                <label class="block text-slate-400 font-bold mb-1.5 uppercase text-[10px] tracking-wider">Klinik Ritm va Patologiyalar</label>
+                <select id="rhythm-select" onchange="changeRhythm(this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-sky-500 font-semibold">
+                    <option value="normal">1. Normal sinus ritmi (72 BPM)</option>
+                    <option value="bradycardia">2. Sinus bradikardiyasi (42 BPM)</option>
+                    <option value="tachycardia">3. Sinus taxikardiyasi (145 BPM)</option>
+                    <option value="afib">4. Bo'lmachalar fibrillyatsiyasi (AFib)</option>
+                    <option value="stemi">5. Miokard infarkti (STEMI)</option>
+                    <option value="vtach">6. Qorinchalar taxikardiyasi (VTach)</option>
+                    <option value="vfib">7. Qorinchalar fibrillyatsiyasi (VFib)</option>
+                    <option value="asystole">8. Asistoliya (0 BPM)</option>
+                </select>
+                <p id="rhythm-desc" class="mt-1.5 text-[11px] text-slate-300 bg-slate-900/75 p-2 rounded-xl border border-slate-800 leading-relaxed">
+                    Sog'lom yurak ritmi (60–100 zarba/daq). Har bir QRS kompleksidan oldin musbat P tishcha mavjud.
+                </p>
+            </div>
+
+            <!-- 2. Yurak Urish Tezligi Slayderi -->
+            <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                <div class="flex justify-between items-center mb-1">
+                    <label class="text-slate-400 font-bold uppercase text-[10px]">Yurak Urishi Tezligi (Puls)</label>
+                    <span id="bpm-val-display" class="mono text-sky-400 font-bold">72 zarba/daq</span>
+                </div>
+                <input type="range" id="bpm-slider" min="30" max="220" value="72" oninput="setBPM(this.value)" class="w-full cursor-pointer">
+                <div class="flex justify-between text-[10px] text-slate-500 mono mt-0.5">
+                    <span>30</span>
+                    <span>Norma: 60–100</span>
+                    <span>220</span>
+                </div>
+            </div>
+
+            <!-- 3. Defibrillyator Moduli -->
+            <div class="bg-gradient-to-br from-rose-950/50 to-slate-900/90 p-3 rounded-xl border border-rose-500/40 space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="font-bold text-rose-300 uppercase text-[10px] tracking-wider flex items-center gap-1.5">
+                        <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        Defibrillyator Moduli
+                    </span>
+                    <span id="defib-energy-label" class="mono font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">200 J</span>
+                </div>
+                <div class="grid grid-cols-5 gap-1">
+                    <button onclick="setDefibEnergy(100)" class="energy-btn py-1 rounded bg-slate-800 border border-slate-700 mono text-[10px]">100J</button>
+                    <button onclick="setDefibEnergy(150)" class="energy-btn py-1 rounded bg-slate-800 border border-slate-700 mono text-[10px]">150J</button>
+                    <button onclick="setDefibEnergy(200)" class="energy-btn btn-active py-1 rounded bg-slate-800 border border-slate-700 mono text-[10px]">200J</button>
+                    <button onclick="setDefibEnergy(300)" class="energy-btn py-1 rounded bg-slate-800 border border-slate-700 mono text-[10px]">300J</button>
+                    <button onclick="setDefibEnergy(360)" class="energy-btn py-1 rounded bg-slate-800 border border-slate-700 mono text-[10px]">360J</button>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="btn-charge" onclick="chargeDefibrillator()" class="py-2 px-2 rounded-xl font-bold bg-amber-600 hover:bg-amber-500 text-white transition shadow-md text-[11px]">
+                        ⚡ Zaryadlash (Charge)
+                    </button>
+                    <button id="btn-shock" onclick="deliverShock()" disabled class="py-2 px-2 rounded-xl font-bold bg-slate-800 text-slate-500 border border-slate-700 transition cursor-not-allowed text-[11px]">
+                        💥 Razryad (Shock)
+                    </button>
+                </div>
+                <div id="defib-status-text" class="text-[10px] text-center text-slate-400 mono">
+                    Holat: Zaryadlanmagan (Kutish rejimida)
+                </div>
+            </div>
+
+            <!-- 4. EKG Sozlamalari (Tarmoq, Tezlik, Amplituda, 50Hz Filtr) -->
+            <div class="space-y-2">
+                <label class="block text-slate-400 font-bold uppercase text-[10px] tracking-wider">EKG Apparat Sozlamalari</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <span class="text-[10px] text-slate-400 block mb-1">Tarmoq (Lead) tanlash</span>
+                        <select id="lead-select" onchange="setLeadMode(this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-sky-300 font-bold mono text-[11px] focus:outline-none">
+                            <option value="ALL">12-kanal ko'rinish</option>
+                            <option value="I">I-tarmoq (Lead I)</option>
+                            <option value="II">II-tarmoq (Lead II)</option>
+                            <option value="III">III-tarmoq (Lead III)</option>
+                            <option value="aVR">aVR tarmog'i</option>
+                            <option value="aVL">aVL tarmog'i</option>
+                            <option value="aVF">aVF tarmog'i</option>
+                            <option value="V1">V1 ko'krak tarmog'i</option>
+                            <option value="V2">V2 ko'krak tarmog'i</option>
+                            <option value="V3">V3 ko'krak tarmog'i</option>
+                            <option value="V4">V4 ko'krak tarmog'i</option>
+                            <option value="V5">V5 ko'krak tarmog'i</option>
+                            <option value="V6">V6 ko'krak tarmog'i</option>
+                        </select>
+                    </div>
+                    <button onclick="toggleSpeed()" class="p-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-sky-500 text-left">
+                        <span class="text-[10px] text-slate-400 block">Lenta tezligi</span>
+                        <span id="btn-speed-text" class="mono font-bold text-sky-300">25 mm/s</span>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="toggleGain()" class="p-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-sky-500 text-left">
+                        <span class="text-[10px] text-slate-400 block">Amplituda (Gain)</span>
+                        <span id="btn-gain-text" class="mono font-bold text-sky-300">10 mm/mV</span>
+                    </button>
+                    <button onclick="toggleFilter()" id="btn-filter" class="p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-left">
+                        <span class="text-[10px] text-slate-400 block">50Hz AC Filtr</span>
+                        <span id="btn-filter-text" class="mono font-bold text-emerald-300">Yoqilgan</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 5. Termoprinter va PNG Yuklab Olish -->
+            <div class="space-y-2 pt-1 border-t border-slate-800">
+                <button id="btn-print" onclick="togglePrint()" class="w-full py-2 px-3 rounded-xl font-bold bg-sky-600 hover:bg-sky-500 text-white flex items-center justify-center gap-2 shadow-lg transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                    <span id="print-label">Chop etish (3D Printer)</span>
+                </button>
+                <button onclick="exportECGStripPNG()" class="w-full py-2 px-3 rounded-xl font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-600 text-sky-300 flex items-center justify-center gap-2 transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    EKG lentasini yuklab olish (PNG)
+                </button>
+            </div>
+
+            <!-- 6. 5 ta Elektrod Nazorati -->
+            <div class="bg-slate-900/75 p-2.5 rounded-xl border border-slate-800">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="font-bold text-slate-300 text-[11px]">Bemor Elektrodlari (5-simli)</span>
+                    <button onclick="reconnectAllElectrodes()" class="text-[10px] text-sky-400 hover:underline font-semibold">Barchasini ulash</button>
+                </div>
+                <div class="grid grid-cols-5 gap-1.5 text-center mono text-[10px]">
+                    <button onclick="toggleElectrode('RA')" id="el-btn-RA" class="py-1.5 rounded-lg bg-red-500/20 border border-red-500 text-red-300 font-bold" title="O'ng qo'l (RA - Qizil)">RA</button>
+                    <button onclick="toggleElectrode('LA')" id="el-btn-LA" class="py-1.5 rounded-lg bg-yellow-500/20 border border-yellow-500 text-yellow-300 font-bold" title="Chap qo'l (LA - Sariq)">LA</button>
+                    <button onclick="toggleElectrode('RL')" id="el-btn-RL" class="py-1.5 rounded-lg bg-slate-600/30 border border-slate-400 text-slate-200 font-bold" title="O'ng oyoq (RL - Qora)">RL</button>
+                    <button onclick="toggleElectrode('LL')" id="el-btn-LL" class="py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500 text-emerald-300 font-bold" title="Chap oyoq (LL - Yashil)">LL</button>
+                    <button onclick="toggleElectrode('V1')" id="el-btn-V1" class="py-1.5 rounded-lg bg-white/15 border border-white/70 text-white font-bold" title="Ko'krak elektrodi (V1 - Oq)">V1</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: KLINIK SSENARIYLAR -->
+        <div id="tab-scenarios" class="hidden p-3.5 overflow-y-auto space-y-3 flex-1 text-xs">
+            <div class="bg-sky-950/40 border border-sky-500/30 p-3 rounded-xl">
+                <h3 class="font-bold text-sky-300 mb-1">Reanimatsiya Klinik Vaziyatlari</h3>
+                <p class="text-[11px] text-slate-300 leading-relaxed">
+                    Shoshilinch tibbiy yordam holatlarini tanlang. Tizim bemor parametrlarini avtomatik yuklaydi — siz to'g'ri muolajalarni bajaring!
+                </p>
+            </div>
+
+            <!-- Aktiv Ssenariy Holati -->
+            <div id="active-scenario-box" class="hidden bg-slate-900 border border-amber-500/55 p-3 rounded-xl space-y-2">
+                <div class="flex justify-between items-center">
+                    <span id="scen-title" class="font-bold text-amber-300"></span>
+                    <span id="scen-timer" class="mono text-xs bg-amber-500/20 text-amber-200 px-2 py-0.5 rounded">00:00</span>
+                </div>
+                <p id="scen-story" class="text-[11px] text-slate-200 leading-relaxed"></p>
+                <div id="scen-task" class="text-[11px] font-semibold text-sky-300 bg-sky-950/60 p-2 rounded-lg border border-sky-800"></div>
+                <button onclick="stopScenario()" class="w-full py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold">
+                    Ssenariyni yakunlash
+                </button>
+            </div>
+
+            <!-- 3 ta Ssenariy -->
+            <div class="space-y-2.5">
+                <div class="bg-slate-900/80 border border-slate-700/80 p-3 rounded-xl space-y-2">
+                    <div class="flex justify-between items-start gap-2">
+                        <h4 class="font-bold text-white">1. O'tkir miokard infarkti va VFib</h4>
+                        <span class="text-[10px] bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded font-semibold shrink-0">Kritik</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400">Bemorda o'tkir STEMI boshlanadi va 8 soniyadan keyin qorinchalar fibrillyatsiyasiga (VFib) o'tadi. Zudlik bilan defibrillyatsiya o'tkazing!</p>
+                    <button onclick="startScenario(1)" class="w-full py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold transition">
+                        1-ssenariyni boshlash
+                    </button>
+                </div>
+
+                <div class="bg-slate-900/80 border border-slate-700/80 p-3 rounded-xl space-y-2">
+                    <div class="flex justify-between items-start gap-2">
+                        <h4 class="font-bold text-white">2. Og'ir bradikardiya va gipotenziya</h4>
+                        <span class="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-semibold shrink-0">O'rta</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400">Bemor boshi aylanishi va holsizlik bilan keldi. Puls 38 zarba/daq, A/B 85/50. Ritmni normallashtiring va kardiogrammani chop eting.</p>
+                    <button onclick="startScenario(2)" class="w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold transition">
+                        2-ssenariyni boshlash
+                    </button>
+                </div>
+
+                <div class="bg-slate-900/80 border border-slate-700/80 p-3 rounded-xl space-y-2">
+                    <div class="flex justify-between items-start gap-2">
+                        <h4 class="font-bold text-white">3. Elektrod uzilishi va tarmoq shovqini</h4>
+                        <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-semibold shrink-0">Diagnostika</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400">Monitorda artefaktlar va uzilish signali chiqmoqda. 3D bemordagi uzilgan elektrodlarni ulang va 50Hz filtrni yoqing.</p>
+                    <button onclick="startScenario(3)" class="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition">
+                        3-ssenariyni boshlash
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: TASHXIS TESTI (QUIZ MODE) -->
+        <div id="tab-quiz" class="hidden p-3.5 overflow-y-auto space-y-3 flex-1 text-xs">
+            <div class="bg-indigo-950/50 border border-indigo-500/40 p-3 rounded-xl flex items-center justify-between">
+                <div>
+                    <h3 class="font-bold text-indigo-300">Klinik Tashxis Testi</h3>
+                    <p class="text-[11px] text-slate-300">3D monitordagi kardiogrammani tahlil qiling!</p>
+                </div>
+                <div class="text-right">
+                    <span class="text-[10px] text-slate-400 block">Natija / Seriya</span>
+                    <div class="mono text-sm font-extrabold text-emerald-400">
+                        <span id="quiz-score">0 / 0</span> <span class="text-amber-300 text-xs" id="quiz-streak">(🔥 0)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-slate-900/90 border border-slate-700 p-3 rounded-xl space-y-2.5">
+                <p class="text-[11px] text-slate-300">
+                    3D EKG monitoriga qarang (ekranda ritm nomi yashirilgan). Ushbu EKG qaysi klinik holatga mos keladi?
+                </p>
+                <div id="quiz-options" class="space-y-2"></div>
+            </div>
+
+            <div id="quiz-feedback" class="hidden p-3 rounded-xl border text-[11px] leading-relaxed"></div>
+
+            <button onclick="nextQuizQuestion()" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition shadow-lg">
+                Keyingi savol (Yangi EKG) →
+            </button>
+        </div>
+    </div>
+
+    <!-- PASTKI CHAP KAMERA RAKURSLARI PANELI -->
+    <div class="fixed bottom-3 left-3 z-20 max-w-[94vw]">
+        <div class="glass-panel rounded-2xl p-1.5 flex items-center gap-1 overflow-x-auto">
+            <span class="text-[11px] text-slate-400 px-2 font-semibold hidden md:inline">Kamera:</span>
+            <button onclick="setCameraView('overview')" id="cam-overview" class="cam-btn btn-active text-xs px-3 py-1.5 rounded-xl border border-transparent hover:bg-slate-800 transition font-semibold whitespace-nowrap">
+                Umumiy ko'rinish
+            </button>
+            <button onclick="setCameraView('screen')" id="cam-screen" class="cam-btn text-xs px-3 py-1.5 rounded-xl border border-transparent hover:bg-slate-800 transition font-semibold whitespace-nowrap">
+                EKG Ekrani
+            </button>
+            <button onclick="setCameraView('patient')" id="cam-patient" class="cam-btn text-xs px-3 py-1.5 rounded-xl border border-transparent hover:bg-slate-800 transition font-semibold whitespace-nowrap">
+                Bemor & Elektrodlar
+            </button>
+            <button onclick="setCameraView('defib')" id="cam-defib" class="cam-btn text-xs px-3 py-1.5 rounded-xl border border-transparent hover:bg-slate-800 transition font-semibold whitespace-nowrap">
+                Defibrillyator
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * 3D EKG & REANIMATSIYA SIMULYATORI
+ * Muallif: Abdumannonov Oyatillo
+ * Texnologiyalar: Three.js + Web Audio API + Dynamic Canvas Textures
+ */
+
+// ==========================================
+// 1. MUALLIF MA'LUMOTLARI (LOCALSTORAGE BILAN)
+// ==========================================
+const DEFAULT_AUTHOR_HTML = `
+<p>Ushbu <b>3D EKG va Reanimatsiya Simulyatori</b> tibbiyot oliygohlari talabalari, shifokor-reanimatologlar hamda kardiologiya yo'nalishi mutaxassislari uchun zamonaviy interaktiv o'quv trenajyori sifatida <b>Abdumannonov Oyatillo</b> tomonidan yaratilgan.</p>
+<p>Simulyator real vaqt rejimida 12 kanalli elektrokardiogramma to'lqinlarini matematik modellashtiradi, bemor hayotiy ko'rsatkichlarini kuzatish va shoshilinch defibrillyatsiya muolajalarini xavfsiz 3D muhitda mashq qilish imkonini beradi.</p>
+`;
+
+function initAuthorInfo() {
+    const saved = localStorage.getItem('oyatillo_ecg_author_info');
+    const viewEl = document.getElementById('author-info-view');
+    const resetBtn = document.getElementById('btn-reset-author');
+    if (saved) {
+        viewEl.innerHTML = saved;
+        resetBtn.classList.remove('hidden');
+    } else {
+        viewEl.innerHTML = DEFAULT_AUTHOR_HTML;
+        resetBtn.classList.add('hidden');
+    }
+}
+
+function toggleEditAuthorInfo() {
+    const viewEl = document.getElementById('author-info-view');
+    const editEl = document.getElementById('author-info-edit');
+    const textarea = document.getElementById('author-info-textarea');
+    const isEditing = !editEl.classList.contains('hidden');
+
+    if (isEditing) {
+        editEl.classList.add('hidden');
+        viewEl.classList.remove('hidden');
+    } else {
+        textarea.value = viewEl.innerText.trim();
+        viewEl.classList.add('hidden');
+        editEl.classList.remove('hidden');
+        textarea.focus();
+    }
+}
+
+function saveAuthorInfo() {
+    const raw = document.getElementById('author-info-textarea').value.trim();
+    if (!raw) {
+        showToast("Matn bo'sh bo'lishi mumkin emas!");
+        return;
+    }
+    const formatted = raw.split('\n').filter(p => p.trim()).map(p => `<p>${p.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`).join('');
+    localStorage.setItem('oyatillo_ecg_author_info', formatted);
+    initAuthorInfo();
+    document.getElementById('author-info-edit').classList.add('hidden');
+    document.getElementById('author-info-view').classList.remove('hidden');
+    showToast("Muallif ma'lumotlari saqlandi!");
+}
+
+function resetAuthorInfo() {
+    localStorage.removeItem('oyatillo_ecg_author_info');
+    initAuthorInfo();
+    showToast("Asl ma'lumotnoma tiklandi");
+}
+
+// ==========================================
+// 2. SIMULYATSIYA HOLATI (STATE)
+// ==========================================
+const state = {
+    power: true,
+    soundEnabled: false,
+    rhythm: 'normal',
+    bpm: 72,
+    leadMode: 'ALL', // 'ALL' yoki 'I'..'V6'
+    speed: 25,       // 25 yoki 50 mm/s
+    gain: 10,        // 5, 10, 20 mm/mV
+    filterOn: true,
+    printing: false,
+    paperLength: 0,
+    quizMode: false,
+    defib: {
+        energy: 200,
+        charging: false,
+        charged: false,
+        shockAnimating: false,
+        shockTimer: 0
+    },
+    electrodes: {
+        RA: true,
+        LA: true,
+        RL: true,
+        LL: true,
+        V1: true
+    },
+    phase: 0
+};
+
+const rhythmInfo = {
+    normal: {
+        name: "Normal sinus ritmi",
+        shortName: "NORMAL SINUS RITMI",
+        defaultBpm: 72,
+        spo2: 98,
+        nibp: "120/80",
+        desc: "Sog'lom yurak ritmi (60–100 zarba/daq). Har bir QRS kompleksidan oldin musbat P tishcha mavjud, R-R intervallari teng."
+    },
+    bradycardia: {
+        name: "Sinus bradikardiyasi",
+        shortName: "SINUS BRADIKARDIYASI",
+        defaultBpm: 42,
+        spo2: 95,
+        nibp: "96/60",
+        desc: "Yurak urish tezligi daqiqasiga 60 tadan kam (< 60). Sinus tuguni impuls generatsiyasi sekinlashgan."
+    },
+    tachycardia: {
+        name: "Sinus taxikardiyasi",
+        shortName: "SINUS TAXIKARDIYASI",
+        defaultBpm: 145,
+        spo2: 97,
+        nibp: "142/90",
+        desc: "Yurak urish tezligi daqiqasiga 100 tadan yuqori (> 100). P tishchalar saqlangan, R-R intervallari qisqargan."
+    },
+    afib: {
+        name: "Bo'lmachalar fibrillyatsiyasi (AFib)",
+        shortName: "BO'LMACHALAR FIBRILLYATSIYASI",
+        defaultBpm: 118,
+        spo2: 94,
+        nibp: "110/70",
+        desc: "P tishchalar yo'qolgan, izoliniyada tartibsiz f-to'lqinlar va mutlaqo har xil R-R intervallari kuzatiladi."
+    },
+    stemi: {
+        name: "Miokard infarkti (STEMI)",
+        shortName: "O'TKIR MIOKARD INFARKTI (STEMI)",
+        defaultBpm: 94,
+        spo2: 91,
+        nibp: "92/58",
+        desc: "ST segmentining keskin ko'tarilishi (elevatsiya). Miokardning o'tkir ishemik shikastlanishi belgisi."
+    },
+    vtach: {
+        name: "Qorinchalar taxikardiyasi (VTach)",
+        shortName: "QORINCHALAR TAXIKARDIYASI",
+        defaultBpm: 180,
+        spo2: 84,
+        nibp: "76/46",
+        desc: "Kengaygan va deformatsiyalangan QRS komplekslari. Shoshilinch kardioversiya/defibrillyatsiya talab etiladi!"
+    },
+    vfib: {
+        name: "Qorinchalar fibrillyatsiyasi (VFib)",
+        shortName: "QORINCHALAR FIBRILLYATSIYASI",
+        defaultBpm: 0,
+        spo2: 68,
+        nibp: "---/---",
+        desc: "XAVFLI! Tartibsiz, xaotik to'lqinlar. Yurak nasos funksiyasini bajarmayapti. Zudlik bilan defibrillyatsiya qiling!"
+    },
+    asystole: {
+        name: "Asistoliya (Yurak to'xtashi)",
+        shortName: "ASISTOLIYA (TO'G'RI CHIZIQ)",
+        defaultBpm: 0,
+        spo2: 0,
+        nibp: "---/---",
+        desc: "HAYOTGA XAVFLI! Yurakda elektr faollik to'xtagan (izoliniya). Reanimatsiya tadbirlarini boshlang."
+    }
+};
+
+// ==========================================
+// 3. WEB AUDIO API (OVOZ EFFEKTLARI)
+// ==========================================
+let audioCtx = null;
+
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+}
+
+function playQRSBeep(spo2Val = 98) {
+    if (!state.power || !state.soundEnabled || !audioCtx) return;
+    try {
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        const baseFreq = 650 + (Math.max(70, spo2Val) - 70) * 12;
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(baseFreq, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.11, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.11);
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.12);
+    } catch (e) {}
+}
+
+function playAlarmTone() {
+    if (!state.power || !state.soundEnabled || !audioCtx) return;
+    try {
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(520, audioCtx.currentTime + 0.16);
+        gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.34);
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.35);
+    } catch (e) {}
+}
+
+function playDefibChargeSound() {
+    if (!audioCtx) initAudio();
+    if (!state.soundEnabled || !audioCtx) return;
+    try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(240, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1480, audioCtx.currentTime + 1.4);
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.14, audioCtx.currentTime + 1.35);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.45);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 1.46);
+    } catch (e) {}
+}
+
+function playDefibShockSound() {
+    if (!audioCtx) initAudio();
+    if (!audioCtx) return;
+    try {
+        const bufferSize = audioCtx.sampleRate * 0.35;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.08));
+        }
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.32, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+        noise.connect(gain);
+        gain.connect(audioCtx.destination);
+        noise.start();
+    } catch (e) {}
+}
+
+// ==========================================
+// 4. EKG TO'LQINLARINI MATEMATIK SINTEZ QILISH
+// ==========================================
+function gaussian(x, mu, sigma, amp) {
+    return amp * Math.exp(-0.5 * Math.pow((x - mu) / sigma, 2));
+}
+
+function calculateECGSample(phase, leadName, timeSec) {
+    const limbOff = !state.electrodes.RA || !state.electrodes.LA || !state.electrodes.LL;
+    const chestOff = leadName.startsWith('V') && !state.electrodes.V1;
+
+    if (limbOff || chestOff) {
+        return Math.sin(timeSec * 140) * 0.14 + (Math.random() - 0.5) * 0.22;
+    }
+
+    let polarity = 1.0;
+    let pAmp = 0.15, qAmp = -0.12, rAmp = 1.1, sAmp = -0.25, tAmp = 0.3;
+
+    if (leadName === 'aVR') {
+        polarity = -0.85;
+    } else if (leadName === 'V1') {
+        rAmp = 0.35; sAmp = -0.95; tAmp = -0.1;
+    } else if (leadName === 'V2') {
+        rAmp = 0.65; sAmp = -0.75;
+    } else if (leadName === 'III' || leadName === 'aVL') {
+        rAmp = 0.75; qAmp = -0.05;
+    } else if (leadName === 'V4' || leadName === 'V5') {
+        rAmp = 1.35;
+    }
+
+    let val = 0;
+
+    if (state.rhythm === 'asystole') {
+        val = Math.sin(timeSec * 2.0) * 0.012 + (Math.random() - 0.5) * 0.008;
+    } else if (state.rhythm === 'vfib') {
+        val = (
+            Math.sin(timeSec * 26) * 0.36 +
+            Math.sin(timeSec * 41 + 1.2) * 0.26 +
+            Math.cos(timeSec * 19) * 0.21
+        ) * polarity;
+    } else if (state.rhythm === 'vtach') {
+        val = (
+            gaussian(phase, 0.35, 0.065, 1.35) +
+            gaussian(phase, 0.56, 0.09, -0.65)
+        ) * polarity;
+    } else {
+        if (state.rhythm === 'afib') {
+            val += (Math.sin(timeSec * 39) * 0.045 + Math.cos(timeSec * 54) * 0.035);
+        } else {
+            val += gaussian(phase, 0.16, 0.024, pAmp);
+        }
+
+        val += gaussian(phase, 0.28, 0.010, qAmp);
+        val += gaussian(phase, 0.31, 0.013, rAmp);
+        val += gaussian(phase, 0.345, 0.012, sAmp);
+
+        if (state.rhythm === 'stemi') {
+            val += gaussian(phase, 0.44, 0.055, 0.54);
+            val += gaussian(phase, 0.54, 0.045, 0.46);
+        } else {
+            val += gaussian(phase, 0.53, 0.038, tAmp);
+        }
+
+        val *= polarity;
+    }
+
+    if (!state.filterOn) {
+        val += Math.sin(timeSec * 314.159) * 0.12 + (Math.random() - 0.5) * 0.08;
+    }
+
+    return val;
+}
+
+// ==========================================
+// 5. MONITOR EKRANI VA PRINTER QOG'OZI (CANVAS TEXTURES)
+// ==========================================
+const screenCanvas = document.createElement('canvas');
+screenCanvas.width = 1024;
+screenCanvas.height = 640;
+const sCtx = screenCanvas.getContext('2d');
+const screenTexture = new THREE.CanvasTexture(screenCanvas);
+screenTexture.minFilter = THREE.LinearFilter;
+
+const paperCanvas = document.createElement('canvas');
+paperCanvas.width = 512;
+paperCanvas.height = 1024;
+const pCtx = paperCanvas.getContext('2d');
+const paperTexture = new THREE.CanvasTexture(paperCanvas);
+
+const allLeadsList = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'];
+const leadBuffers = {};
+const BUFFER_LEN = 340;
+allLeadsList.forEach(l => { leadBuffers[l] = new Array(BUFFER_LEN).fill(0); });
+let sweepIndex = 0;
+const paperBuffer = new Array(420).fill(0);
+
+function updateMonitorCanvas(timeSec) {
+    const w = screenCanvas.width;
+    const h = screenCanvas.height;
+
+    if (!state.power) {
+        sCtx.fillStyle = '#04070d';
+        sCtx.fillRect(0, 0, w, h);
+        sCtx.fillStyle = '#1e293b';
+        sCtx.font = 'bold 22px Inter, sans-serif';
+        sCtx.textAlign = 'center';
+        sCtx.fillText("APPARAT O'CHIRILGAN — QUVVAT TUGMASINI BOSING", w / 2, h / 2);
+        screenTexture.needsUpdate = true;
+        return;
+    }
+
+    sCtx.fillStyle = '#050b14';
+    sCtx.fillRect(0, 0, w, h);
+
+    // Millimetrli to'r
+    sCtx.strokeStyle = 'rgba(16, 185, 129, 0.12)';
+    sCtx.lineWidth = 1;
+    for (let x = 0; x < w; x += 20) {
+        sCtx.beginPath(); sCtx.moveTo(x, 56); sCtx.lineTo(x, h - 42); sCtx.stroke();
+    }
+    for (let y = 56; y < h - 42; y += 20) {
+        sCtx.beginPath(); sCtx.moveTo(0, y); sCtx.lineTo(w, y); sCtx.stroke();
+    }
+
+    // Yuqori Header
+    sCtx.fillStyle = '#0f172a';
+    sCtx.fillRect(0, 0, w, 56);
+    sCtx.fillStyle = '#38bdf8';
+    sCtx.font = 'bold 17px JetBrains Mono, monospace';
+    sCtx.textAlign = 'left';
+    sCtx.fillText('CARDIO-PRO 12X | A.OYATILLO', 18, 35);
+
+    const isCritical = state.rhythm === 'vfib' || state.rhythm === 'asystole' || state.rhythm === 'vtach';
+    sCtx.fillStyle = state.quizMode ? '#a5b4fc' : (isCritical ? '#ef4444' : '#34d399');
+    sCtx.font = 'bold 17px Inter, sans-serif';
+    sCtx.textAlign = 'center';
+    const headerTitle = state.quizMode ? "TASHXIS TESTI: RITMNI ANIQLANG" : rhythmInfo[state.rhythm].shortName;
+    sCtx.fillText(headerTitle, w / 2 + 30, 35);
+
+    const displayBpm = (state.rhythm === 'vfib' || state.rhythm === 'asystole') ? '---' : Math.round(state.bpm);
+    sCtx.fillStyle = isCritical ? '#ef4444' : '#10b981';
+    sCtx.font = 'bold 32px JetBrains Mono, monospace';
+    sCtx.textAlign = 'right';
+    sCtx.fillText(`♥ ${displayBpm}`, w - 18, 38);
+
+    const disconnectedList = Object.keys(state.electrodes).filter(k => !state.electrodes[k]);
+    if (disconnectedList.length > 0) {
+        sCtx.fillStyle = 'rgba(220, 38, 38, 0.92)';
+        sCtx.fillRect(w / 2 - 240, 62, 480, 30);
+        sCtx.fillStyle = '#ffffff';
+        sCtx.font = 'bold 15px Inter, sans-serif';
+        sCtx.textAlign = 'center';
+        sCtx.fillText(`⚠ ELEKTROD UZILGAN (${disconnectedList.join(', ')})! ULANISHNI TEKSHIRING`, w / 2, 82);
+    } else if (state.defib.charged) {
+        sCtx.fillStyle = 'rgba(217, 119, 6, 0.92)';
+        sCtx.fillRect(w / 2 - 230, 62, 460, 30);
+        sCtx.fillStyle = '#ffffff';
+        sCtx.font = 'bold 15px Inter, sans-serif';
+        sCtx.textAlign = 'center';
+        sCtx.fillText(`⚡ DEFIBRILLYATOR ZARYADLANGAN: ${state.defib.energy} J — RAZRYADGA TAYYOR!`, w / 2, 82);
+    }
+
+    const gainScale = state.gain / 10;
+
+    if (state.leadMode === 'ALL') {
+        const cols = 2, rows = 6;
+        const cellW = (w - 40) / cols;
+        const cellH = (h - 115) / rows;
+
+        allLeadsList.forEach((lead, idx) => {
+            const col = Math.floor(idx / rows);
+            const row = idx % rows;
+            const x0 = 20 + col * cellW;
+            const y0 = 68 + row * cellH + cellH / 2;
+
+            sCtx.fillStyle = '#38bdf8';
+            sCtx.font = 'bold 14px JetBrains Mono, monospace';
+            sCtx.textAlign = 'left';
+            sCtx.fillText(lead, x0 + 6, y0 - cellH * 0.28);
+
+            const buf = leadBuffers[lead];
+            sCtx.strokeStyle = isCritical ? '#f87171' : '#34d399';
+            sCtx.lineWidth = 2.2;
+            sCtx.beginPath();
+
+            for (let i = 0; i < BUFFER_LEN; i++) {
+                const dist = (i - sweepIndex + BUFFER_LEN) % BUFFER_LEN;
+                if (dist < 6) {
+                    sCtx.stroke(); sCtx.beginPath(); continue;
+                }
+                const px = x0 + 44 + (i / BUFFER_LEN) * (cellW - 54);
+                const py = y0 - buf[i] * (cellH * 0.38) * gainScale;
+                if (i === 0 || dist === 6) sCtx.moveTo(px, py);
+                else sCtx.lineTo(px, py);
+            }
+            sCtx.stroke();
+        });
+    } else {
+        const selectedLead = state.leadMode;
+        sCtx.fillStyle = '#38bdf8';
+        sCtx.font = 'bold 18px JetBrains Mono, monospace';
+        sCtx.textAlign = 'left';
+        sCtx.fillText(`TANLANGAN KANAL: ${selectedLead}-TARMOQ (LEAD ${selectedLead})`, 26, 115);
+
+        const buf = leadBuffers[selectedLead] || leadBuffers['II'];
+        sCtx.strokeStyle = isCritical ? '#f87171' : '#34d399';
+        sCtx.lineWidth = 3.5;
+        sCtx.beginPath();
+
+        for (let i = 0; i < BUFFER_LEN; i++) {
+            const dist = (i - sweepIndex + BUFFER_LEN) % BUFFER_LEN;
+            if (dist < 6) {
+                sCtx.stroke(); sCtx.beginPath(); continue;
+            }
+            const px = 26 + (i / BUFFER_LEN) * (w - 52);
+            const py = 340 - buf[i] * 145 * gainScale;
+            if (i === 0 || dist === 6) sCtx.moveTo(px, py);
+            else sCtx.lineTo(px, py);
+        }
+        sCtx.stroke();
+    }
+
+    sCtx.fillStyle = '#0f172a';
+    sCtx.fillRect(0, h - 42, w, 42);
+    sCtx.fillStyle = '#94a3b8';
+    sCtx.font = '600 14px JetBrains Mono, monospace';
+    sCtx.textAlign = 'left';
+    sCtx.fillText(
+        `TEZLIK: ${state.speed}mm/s | GAIN: ${state.gain}mm/mV | FILTR 50Hz: ${state.filterOn ? 'YOQIQ' : "O'CHIQ"} | SpO2: ${rhythmInfo[state.rhythm].spo2}%`,
+        18, h - 15
+    );
+
+    screenTexture.needsUpdate = true;
+}
+
+function renderMedicalECGGrid(ctx, w, h, dataArray, includeMetadata = false) {
+    ctx.fillStyle = '#fff5f6';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = 'rgba(244, 63, 94, 0.22)';
+    ctx.lineWidth = 1;
+    const smallStep = 12;
+    for (let x = 0; x < w; x += smallStep) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+    for (let y = 0; y < h; y += smallStep) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+
+    ctx.strokeStyle = 'rgba(225, 29, 72, 0.45)';
+    ctx.lineWidth = 1.4;
+    const bigStep = smallStep * 5;
+    for (let x = 0; x < w; x += bigStep) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+    for (let y = 0; y < h; y += bigStep) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+
+    const gainScale = state.gain / 10;
+
+    if (!includeMetadata) {
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        for (let i = 0; i < dataArray.length; i++) {
+            const y = (i / dataArray.length) * h;
+            const x = w * 0.5 + dataArray[i] * 135 * gainScale;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    } else {
+        ctx.fillStyle = '#111827';
+        ctx.font = 'bold 18px JetBrains Mono, monospace';
+        ctx.textAlign = 'left';
+        const nowStr = new Date().toLocaleString('uz-UZ');
+        ctx.fillText(`CARDIO-PRO 12X (Muallif: Abdumannonov Oyatillo) | Sana: ${nowStr}`, 24, 34);
+        ctx.font = '600 15px JetBrains Mono, monospace';
+        const rhythmLabel = state.quizMode ? "Tashxis testi rejimi" : rhythmInfo[state.rhythm].name;
+        ctx.fillText(
+            `Ritm: ${rhythmLabel} | Puls: ${Math.round(state.bpm)} zarba/daq | Tezlik: ${state.speed} mm/s | Gain: ${state.gain} mm/mV | Filtr 50Hz: ${state.filterOn ? 'ON' : 'OFF'}`,
+            24, 60
+        );
+
+        const tracks = [
+            { label: 'II-TARMOQ (LEAD II)', buf: leadBuffers['II'], yMid: 185 },
+            { label: 'V1-TARMOQ (LEAD V1)', buf: leadBuffers['V1'], yMid: 355 }
+        ];
+
+        tracks.forEach(tr => {
+            ctx.fillStyle = '#be123c';
+            ctx.font = 'bold 15px JetBrains Mono, monospace';
+            ctx.fillText(tr.label, 24, tr.yMid - 65);
+
+            ctx.strokeStyle = '#111827';
+            ctx.lineWidth = 2.4;
+            ctx.beginPath();
+            const calH = 60 * gainScale;
+            ctx.moveTo(24, tr.yMid);
+            ctx.lineTo(34, tr.yMid);
+            ctx.lineTo(34, tr.yMid - calH);
+            ctx.lineTo(54, tr.yMid - calH);
+            ctx.lineTo(54, tr.yMid);
+            ctx.lineTo(64, tr.yMid);
+            ctx.stroke();
+
+            ctx.beginPath();
+            for (let i = 0; i < tr.buf.length; i++) {
+                const idx = (sweepIndex + i) % tr.buf.length;
+                const px = 75 + (i / tr.buf.length) * (w - 105);
+                const py = tr.yMid - tr.buf[idx] * 65 * gainScale;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+        });
+    }
+}
+
+function updatePaperCanvas() {
+    renderMedicalECGGrid(pCtx, paperCanvas.width, paperCanvas.height, paperBuffer, false);
+    paperTexture.needsUpdate = true;
+}
+
+// ==========================================
+// 6. THREE.JS 3D REANIMATSIYA PALATASI VA MODELLAR
+// ==========================================
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b1220);
+scene.fog = new THREE.FogExp2(0x0b1220, 0.042);
+
+const camera = new THREE.PerspectiveCamera(44, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(2.3, 2.45, 4.7);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.target.set(0.35, 1.15, 0);
+controls.minDistance = 1.25;
+controls.maxDistance = 9.5;
+controls.maxPolarAngle = Math.PI / 2 - 0.02;
+
+// Yoritish
+const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.72);
+scene.add(ambientLight);
+
+const mainLight = new THREE.DirectionalLight(0xffffff, 1.15);
+mainLight.position.set(3.5, 6.5, 4.5);
+mainLight.castShadow = true;
+mainLight.shadow.mapSize.width = 2048;
+mainLight.shadow.mapSize.height = 2048;
+scene.add(mainLight);
+
+const blueAccentLight = new THREE.PointLight(0x38bdf8, 0.65, 10);
+blueAccentLight.position.set(-1.5, 2.8, -1.5);
+scene.add(blueAccentLight);
+
+// Materiallar
+const medWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.28, metalness: 0.05 });
+const medGreyMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.45, metalness: 0.2 });
+const darkSlateMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5, metalness: 0.15 });
+const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.18, metalness: 0.88 });
+const medBlueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.35, metalness: 0.1 });
+const wallMat = new THREE.MeshStandardMaterial({ color: 0x162236, roughness: 0.8 });
+const wallTileMat = new THREE.MeshStandardMaterial({ color: 0x1e2d45, roughness: 0.4 });
+
+// --- 6.1 REANIMATSIYA PALATASI MUHITI ---
+const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(24, 24),
+    new THREE.MeshStandardMaterial({ color: 0x0e1726, roughness: 0.65, metalness: 0.1 })
+);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const gridHelper = new THREE.GridHelper(18, 36, 0x1e293b, 0x131c2e);
+gridHelper.position.y = 0.002;
+scene.add(gridHelper);
+
+const backWall = new THREE.Mesh(new THREE.BoxGeometry(10, 4.2, 0.15), wallMat);
+backWall.position.set(0.5, 2.1, -1.65);
+backWall.receiveShadow = true;
+scene.add(backWall);
+
+const wallDado = new THREE.Mesh(new THREE.BoxGeometry(10, 1.35, 0.17), wallTileMat);
+wallDado.position.set(0.5, 0.68, -1.64);
+scene.add(wallDado);
+
+// Tibbiy Devor Konsoli (Kislorod va Vakuum ulagichlari)
+const wallConsole = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.24, 0.12), medWhiteMat);
+wallConsole.position.set(1.2, 1.65, -1.52);
+scene.add(wallConsole);
+
+const consoleStripe = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.06, 0.13), medBlueMat);
+consoleStripe.position.set(1.2, 1.65, -1.52);
+scene.add(consoleStripe);
+
+[-0.6, -0.2, 0.3, 0.7].forEach((offsetX, i) => {
+    const outlet = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.03, 0.03, 0.05, 16),
+        i < 2 ? medBlueMat : new THREE.MeshStandardMaterial({ color: 0xeab308 })
+    );
+    outlet.rotation.x = Math.PI / 2;
+    outlet.position.set(1.2 + offsetX, 1.65, -1.44);
+    scene.add(outlet);
+});
+
+// Tomchilatgich Shtativi (IV Drip Stand)
+const ivGroup = new THREE.Group();
+ivGroup.position.set(2.35, 0, -0.75);
+scene.add(ivGroup);
+
+const ivBase = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 0.04, 20), chromeMat);
+ivBase.position.y = 0.04;
+ivGroup.add(ivBase);
+
+const ivPole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.018, 2.25, 12), chromeMat);
+ivPole.position.y = 1.14;
+ivGroup.add(ivPole);
+
+const ivHook = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.015, 0.015), chromeMat);
+ivHook.position.y = 2.25;
+ivGroup.add(ivHook);
+
+const ivBag = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.055, 0.055, 0.22, 16),
+    new THREE.MeshStandardMaterial({ color: 0xbae6fd, transparent: true, opacity: 0.75, roughness: 0.1 })
+);
+ivBag.position.set(-0.09, 2.08, 0);
+ivGroup.add(ivBag);
+
+// --- 6.2 INTERAKTIV OBYEKTLAR VA EKG APPARATI ---
+const interactiveObjects = [];
+const physicalButtons = {};
+
+// Tibbiy Aravacha
+const cartGroup = new THREE.Group();
+cartGroup.position.set(-0.55, 0, 0.05);
+scene.add(cartGroup);
+
+const cartBase = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.07, 0.85), medGreyMat);
+cartBase.position.y = 0.12;
+cartBase.castShadow = true;
+cartGroup.add(cartBase);
+
+[[-0.42, 0.34], [0.42, 0.34], [-0.42, -0.34], [0.42, -0.34]].forEach(([wx, wz]) => {
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.04, 16), darkSlateMat);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(wx, 0.05, wz);
+    cartGroup.add(wheel);
+});
+
+const cartColumn = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.82, 0.16), chromeMat);
+cartColumn.position.set(0, 0.54, -0.12);
+cartColumn.castShadow = true;
+cartGroup.add(cartColumn);
+
+const cartDrawer = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.18, 0.45), medWhiteMat);
+cartDrawer.position.set(0, 0.65, 0.05);
+cartDrawer.castShadow = true;
+cartGroup.add(cartDrawer);
+
+const drawerHandle = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.025, 0.04), chromeMat);
+drawerHandle.position.set(0, 0.67, 0.29);
+cartGroup.add(drawerHandle);
+
+const cartTop = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.05, 0.82), medWhiteMat);
+cartTop.position.set(0, 0.96, 0.02);
+cartTop.castShadow = true;
+cartGroup.add(cartTop);
+
+const cartHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.72, 12), chromeMat);
+cartHandle.rotation.x = Math.PI / 2;
+cartHandle.position.set(-0.62, 0.96, 0.02);
+cartGroup.add(cartHandle);
+
+// EKG Apparati Korpusi
+const machineGroup = new THREE.Group();
+machineGroup.position.set(-0.55, 0.985, 0.02);
+scene.add(machineGroup);
+
+const mainBody = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.22, 0.70), medWhiteMat);
+mainBody.position.set(0, 0.11, 0);
+mainBody.castShadow = true;
+machineGroup.add(mainBody);
+
+const sideAccentL = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.09, 0.71), medBlueMat);
+sideAccentL.position.set(-0.47, 0.12, 0);
+machineGroup.add(sideAccentL);
+
+const sideAccentR = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.09, 0.71), medBlueMat);
+sideAccentR.position.set(0.47, 0.12, 0);
+machineGroup.add(sideAccentR);
+
+// Monitor Ekrani
+const monitorHood = new THREE.Mesh(new THREE.BoxGeometry(0.90, 0.56, 0.11), medWhiteMat);
+monitorHood.position.set(0, 0.44, -0.18);
+monitorHood.rotation.x = -0.22;
+monitorHood.castShadow = true;
+machineGroup.add(monitorHood);
+
+const monitorBezel = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.50, 0.02), darkSlateMat);
+monitorBezel.position.set(0, 0.44, -0.12);
+monitorBezel.rotation.x = -0.22;
+machineGroup.add(monitorBezel);
+
+const screenPlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.79, 0.45),
+    new THREE.MeshBasicMaterial({ map: screenTexture })
+);
+screenPlane.position.set(0, 0.443, -0.108);
+screenPlane.rotation.x = -0.22;
+screenPlane.userData = {
+    title: "12-Kanalli Jonli EKG Displeyi",
+    desc: "Real vaqtda kardiogramma to'lqinlari va hayotiy ko'rsatkichlarni aks ettiradi.",
+    action: () => setCameraView('screen')
+};
+interactiveObjects.push(screenPlane);
+machineGroup.add(screenPlane);
+
+// Old Boshqaruv Paneli va 3D Tugmalar
+const frontPanel = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.035, 0.32), darkSlateMat);
+frontPanel.position.set(0, 0.225, 0.16);
+frontPanel.rotation.x = 0.08;
+machineGroup.add(frontPanel);
+
+function add3DButton(id, x, z, colorHex, w, d, title, desc, fn) {
+    const mat = new THREE.MeshStandardMaterial({
+        color: colorHex,
+        roughness: 0.3,
+        emissive: colorHex,
+        emissiveIntensity: id === 'power' ? 0.5 : 0.14
+    });
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.032, d), mat);
+    mesh.position.set(x, 0.248, z);
+    mesh.rotation.x = 0.08;
+    mesh.castShadow = true;
+    mesh.userData = {
+        id,
+        baseY: 0.248,
+        title,
+        desc,
+        action: () => {
+            mesh.position.y = mesh.userData.baseY - 0.014;
+            setTimeout(() => { mesh.position.y = mesh.userData.baseY; }, 160);
+            fn();
+        }
+    };
+    interactiveObjects.push(mesh);
+    physicalButtons[id] = mesh;
+    machineGroup.add(mesh);
+}
+
+add3DButton('power', -0.35, 0.16, 0x10b981, 0.09, 0.10, "Quvvat (POWER)", "Apparatni yoqish yoki o'chirish.", togglePower);
+add3DButton('print', -0.22, 0.16, 0x0ea5e9, 0.10, 0.10, "Chop etish (PRINT)", "Termoprinterda EKG lentasini chiqarish.", togglePrint);
+add3DButton('lead',  -0.09, 0.16, 0x6366f1, 0.10, 0.10, "Tarmoq (LEAD)", "12-kanal va alohida tarmoqlar o'rtasida almashish.", () => {
+    setLeadMode(state.leadMode === 'ALL' ? 'II' : 'ALL');
+});
+add3DButton('gain',   0.04, 0.16, 0x8b5cf6, 0.10, 0.10, "Amplituda (GAIN)", "Signal kuchaytirish (5/10/20 mm/mV).", toggleGain);
+add3DButton('sound',  0.17, 0.16, 0x14b8a6, 0.10, 0.10, "Ovoz (SOUND)", "QRS signali va xavf ovozini yoqish/o'chirish.", toggleSound);
+add3DButton('shock',  0.33, 0.16, 0xef4444, 0.13, 0.11, "RAZRYAD (DEFIBRILLYATOR)", "Defibrillyatorni zaryadlash yoki razryad berish.", () => {
+    if (!state.defib.charged) chargeDefibrillator();
+    else deliverShock();
+});
+
+// Termoprinter va 3D Qog'oz Lentasi
+const printerSlot = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.055, 0.34), darkSlateMat);
+printerSlot.position.set(-0.47, 0.17, 0.02);
+machineGroup.add(printerSlot);
+
+const paperMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.32, 0.56),
+    new THREE.MeshStandardMaterial({ map: paperTexture, side: THREE.DoubleSide, roughness: 0.65 })
+);
+paperMesh.rotation.x = -Math.PI / 2;
+paperMesh.rotation.z = Math.PI / 2;
+paperMesh.position.set(-0.49, 0.175, 0.02);
+paperMesh.scale.set(1, 0.04, 1);
+paperMesh.userData = {
+    title: "Termoprinter EKG Lentasi",
+    desc: "Millimetrli qog'ozga real vaqtda EKG chizig'ini chiqaradi.",
+    action: togglePrint
+};
+interactiveObjects.push(paperMesh);
+machineGroup.add(paperMesh);
+
+// --- DEFIBRILLYATOR DAZMOLLARI (2 TA INTERAKTIV 3D PADDLE + SPIRAL KABEL) ---
+const paddleApexGroup = new THREE.Group();
+const paddleSternumGroup = new THREE.Group();
+
+function buildPaddleMesh(labelTitle) {
+    const g = new THREE.Group();
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.025, 0.15), chromeMat);
+    plate.position.y = 0.012;
+    g.add(plate);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.16), medWhiteMat);
+    body.position.y = 0.042;
+    g.add(body);
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.13, 12), darkSlateMat);
+    handle.rotation.x = Math.PI / 2;
+    handle.position.y = 0.095;
+    g.add(handle);
+    const trigger = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.014, 0.014, 0.015, 12),
+        new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.35 })
+    );
+    trigger.position.set(0, 0.115, 0.04);
+    g.add(trigger);
+
+    g.children.forEach(c => {
+        c.userData = {
+            title: labelTitle,
+            desc: "Defibrillyator elektrodi. Zaryadlash va razryad berish uchun bosing.",
+            action: () => {
+                if (!state.defib.charged) chargeDefibrillator();
+                else deliverShock();
+            }
+        };
+        interactiveObjects.push(c);
+    });
+    return g;
+}
+
+paddleSternumGroup.add(buildPaddleMesh("Defibrillyator Elektrodi (STERNUM)"));
+paddleApexGroup.add(buildPaddleMesh("Defibrillyator Elektrodi (APEX)"));
+
+const dockSternumPos = new THREE.Vector3(-0.02, 1.15, -0.14);
+const dockApexPos = new THREE.Vector3(-0.02, 1.15, 0.14);
+paddleSternumGroup.position.copy(dockSternumPos);
+paddleApexGroup.position.copy(dockApexPos);
+scene.add(paddleSternumGroup);
+scene.add(paddleApexGroup);
+
+// --- 6.3 REANIMATSIYA KROVATI VA NAFAS OLUVCHI BEMOR MODELI ---
+const bedGroup = new THREE.Group();
+bedGroup.position.set(1.32, 0, 0.05);
+scene.add(bedGroup);
+
+const bedFrame = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.10, 1.55), medGreyMat);
+bedFrame.position.y = 0.65;
+bedFrame.castShadow = true;
+bedGroup.add(bedFrame);
+
+[[-0.45, 0.68], [0.45, 0.68], [-0.45, -0.68], [0.45, -0.68]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.65, 12), chromeMat);
+    leg.position.set(lx, 0.325, lz);
+    bedGroup.add(leg);
+});
+
+const mattress = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.12, 1.48), medBlueMat);
+mattress.position.y = 0.76;
+mattress.receiveShadow = true;
+bedGroup.add(mattress);
+
+const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.10, 0.32), medWhiteMat);
+pillow.position.set(0, 0.85, -0.52);
+bedGroup.add(pillow);
+
+const railRight = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.22, 0.95), chromeMat);
+railRight.position.set(0.50, 0.88, 0.05);
+bedGroup.add(railRight);
+
+const skinMat = new THREE.MeshStandardMaterial({ color: 0xdfb1a4, roughness: 0.52 });
+const torsoMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.23, 0.95, 24), skinMat);
+torsoMesh.rotation.x = Math.PI / 2 - 0.14;
+torsoMesh.scale.set(1.26, 1, 0.74);
+torsoMesh.position.set(0, 0.96, 0.08);
+torsoMesh.castShadow = true;
+bedGroup.add(torsoMesh);
+
+const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.155, 20, 20), skinMat);
+headMesh.position.set(0, 1.12, -0.46);
+headMesh.castShadow = true;
+bedGroup.add(headMesh);
+
+const blanket = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.14, 0.52), medWhiteMat);
+blanket.position.set(0, 0.88, 0.48);
+bedGroup.add(blanket);
+
+// 5 TA RANG-BARANG EKG ELEKTRODLARI VA KABELLARI
+const electrodeConfigs = [
+    { id: 'RA', label: "RA — Qizil (O'ng o'mrov)", color: 0xef4444, pos: [-0.25, 1.09, -0.22] },
+    { id: 'LA', label: "LA — Sariq (Chap o'mrov)", color: 0xeab308, pos: [0.25, 1.09, -0.22] },
+    { id: 'LL', label: "LL — Yashil (Chap qovurg'a osti)", color: 0x10b981, pos: [0.21, 0.96, 0.22] },
+    { id: 'RL', label: "RL — Qora (O'ng qovurg'a osti)", color: 0x1e293b, pos: [-0.21, 0.96, 0.22] },
+    { id: 'V1', label: "V1 — Oq (Ko'krak elektrodi)", color: 0xffffff, pos: [0.05, 1.11, -0.04] }
+];
+
+const electrodeMeshes = {};
+
+electrodeConfigs.forEach(cfg => {
+    const elMat = new THREE.MeshStandardMaterial({
+        color: cfg.color,
+        roughness: 0.28,
+        emissive: cfg.color === 0x1e293b ? 0x000000 : cfg.color,
+        emissiveIntensity: 0.22
+    });
+    const elMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.036, 0.025, 18), elMat);
+    elMesh.position.set(...cfg.pos);
+    elMesh.userData = {
+        elId: cfg.id,
+        connectedPos: new THREE.Vector3(...cfg.pos),
+        disconnectedPos: new THREE.Vector3(cfg.pos[0], cfg.pos[1] + 0.13, cfg.pos[2] + 0.07),
+        title: cfg.label,
+        desc: "Elektrodni uzish yoki qayta ulash uchun bosing.",
+        action: () => toggleElectrode(cfg.id)
+    };
+    interactiveObjects.push(elMesh);
+    bedGroup.add(elMesh);
+    electrodeMeshes[cfg.id] = elMesh;
+
+    const startPt = new THREE.Vector3(-0.08, 1.10, 0.12);
+    const endPt = new THREE.Vector3(
+        bedGroup.position.x + cfg.pos[0],
+        bedGroup.position.y + cfg.pos[1] + 0.01,
+        bedGroup.position.z + cfg.pos[2]
+    );
+    const mid1 = new THREE.Vector3(0.45, 0.74, 0.25);
+    const mid2 = new THREE.Vector3(0.95, 0.88, cfg.pos[2] * 0.7);
+    const curve = new THREE.CatmullRomCurve3([startPt, mid1, mid2, endPt]);
+    const tube = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, 24, 0.0085, 8, false),
+        new THREE.MeshStandardMaterial({ color: cfg.color, roughness: 0.5 })
+    );
+    scene.add(tube);
+});
+
+// ==========================================
+// 7. RAYCASTING VA KLAVIATURA QISQA YO'LLARI
+// ==========================================
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const tooltip = document.getElementById('hover-tooltip');
+
+window.addEventListener('mousemove', (e) => {
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const hits = raycaster.intersectObjects(interactiveObjects);
+
+    if (hits.length > 0) {
+        const obj = hits[0].object;
+        document.body.style.cursor = 'pointer';
+        document.getElementById('tooltip-title').textContent = obj.userData.title;
+        document.getElementById('tooltip-desc').textContent = obj.userData.desc;
+        tooltip.style.left = Math.min(window.innerWidth - 290, e.clientX + 14) + 'px';
+        tooltip.style.top = Math.min(window.innerHeight - 95, e.clientY + 14) + 'px';
+        tooltip.classList.remove('hidden');
+    } else {
+        document.body.style.cursor = 'default';
+        tooltip.classList.add('hidden');
+    }
+});
+
+let downPt = { x: 0, y: 0 };
+window.addEventListener('pointerdown', (e) => { downPt = { x: e.clientX, y: e.clientY }; });
+window.addEventListener('pointerup', (e) => {
+    if (Math.hypot(e.clientX - downPt.x, e.clientY - downPt.y) > 5) return;
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const hits = raycaster.intersectObjects(interactiveObjects);
+    if (hits.length > 0 && hits[0].object.userData.action) {
+        initAudio();
+        hits[0].object.userData.action();
+    }
+});
+
+window.addEventListener('keydown', (e) => {
+    if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT') return;
+    if (e.key === '1') setCameraView('overview');
+    if (e.key === '2') setCameraView('screen');
+    if (e.key === '3') setCameraView('patient');
+    if (e.key === '4') setCameraView('defib');
+});
+
+// ==========================================
+// 8. KAMERA RAKURSLARI
+// ==========================================
+let targetCamPos = null;
+let targetLookAt = null;
+
+const cameraViews = {
+    overview: { pos: [2.3, 2.45, 4.7],   target: [0.35, 1.15, 0] },
+    screen:   { pos: [-0.55, 1.62, 1.12], target: [-0.55, 1.42, -0.08] },
+    patient:  { pos: [1.35, 2.18, 1.55], target: [1.32, 1.02, 0.05] },
+    defib:    { pos: [0.55, 1.85, 1.35], target: [0.25, 1.15, 0.05] }
+};
+
+function setCameraView(key) {
+    const v = cameraViews[key];
+    if (!v) return;
+    targetCamPos = new THREE.Vector3(...v.pos);
+    targetLookAt = new THREE.Vector3(...v.target);
+    document.querySelectorAll('.cam-btn').forEach(b => b.classList.remove('btn-active'));
+    const btn = document.getElementById('cam-' + key);
+    if (btn) btn.classList.add('btn-active');
+}
+
+// ==========================================
+// 9. BOSHQARUV FUNKSIYALARI
+// ==========================================
+function showToast(msg) {
+    const el = document.getElementById('toast-msg');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.add('hidden'), 2800);
+}
+
+function switchTab(tabName) {
+    ['author', 'control', 'scenarios', 'quiz'].forEach(t => {
+        document.getElementById('tab-' + t).classList.add('hidden');
+        const btn = document.getElementById('tab-btn-' + t);
+        btn.classList.remove('tab-active');
+        btn.classList.add('text-slate-400');
+    });
+    document.getElementById('tab-' + tabName).classList.remove('hidden');
+    const activeBtn = document.getElementById('tab-btn-' + tabName);
+    activeBtn.classList.add('tab-active');
+    activeBtn.classList.remove('text-slate-400');
+
+    if (tabName === 'quiz') {
+        state.quizMode = true;
+        if (!currentQuizRhythm) nextQuizQuestion();
+    } else {
+        state.quizMode = false;
+    }
+}
+
+function toggleSidePanel() {
+    document.getElementById('side-panel').classList.toggle('hidden');
+}
+
+function togglePower() {
+    initAudio();
+    state.power = !state.power;
+    const led = document.getElementById('status-led');
+    const btn = document.getElementById('btn-power-top');
+    const lbl = document.getElementById('power-label-top');
+
+    if (state.power) {
+        led.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]";
+        btn.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600/25 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-600/40 transition";
+        lbl.textContent = "Yoqilgan";
+        physicalButtons.power.material.emissiveIntensity = 0.6;
+        showToast("EKG apparati ishga tushirildi");
+    } else {
+        led.className = "w-2.5 h-2.5 rounded-full bg-slate-600";
+        btn.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-rose-600/25 border border-rose-500/50 text-rose-300 hover:bg-rose-600/40 transition";
+        lbl.textContent = "O'chirilgan";
+        physicalButtons.power.material.emissiveIntensity = 0.0;
+        state.printing = false;
+        state.defib.charged = false;
+        showToast("EKG apparati o'chirildi");
+    }
+    updateHUD();
+}
+
+function toggleSound() {
+    initAudio();
+    state.soundEnabled = !state.soundEnabled;
+    const lbl = document.getElementById('sound-label-top');
+    const btn = document.getElementById('btn-sound-top');
+    if (state.soundEnabled) {
+        lbl.textContent = "Ovoz: Yoqiq";
+        btn.classList.add('border-sky-500', 'text-sky-300');
+        showToast("Monitor ovozli signali yoqildi");
+    } else {
+        lbl.textContent = "Ovoz: O'chiq";
+        btn.classList.remove('border-sky-500', 'text-sky-300');
+        showToast("Monitor ovozi o'chirildi");
+    }
+}
+
+function changeRhythm(key) {
+    state.rhythm = key;
+    const info = rhythmInfo[key];
+    document.getElementById('rhythm-select').value = key;
+    document.getElementById('rhythm-desc').textContent = info.desc;
+    if (info.defaultBpm > 0) {
+        state.bpm = info.defaultBpm;
+        document.getElementById('bpm-slider').value = state.bpm;
+    }
+    updateHUD();
+    checkScenarioProgress();
+}
+
+function setBPM(val) {
+    state.bpm = parseInt(val, 10);
+    if (state.rhythm === 'vfib' || state.rhythm === 'asystole') {
+        changeRhythm('normal');
+    }
+    updateHUD();
+    checkScenarioProgress();
+}
+
+function setLeadMode(mode) {
+    state.leadMode = mode;
+    document.getElementById('lead-select').value = mode;
+    showToast(mode === 'ALL' ? "12-kanalli umumiy ko'rinish" : `${mode}-tarmoq tanlandi`);
+}
+
+function toggleSpeed() {
+    state.speed = state.speed === 25 ? 50 : 25;
+    document.getElementById('btn-speed-text').textContent = `${state.speed} mm/s`;
+    showToast(`Lenta tezligi: ${state.speed} mm/s`);
+}
+
+function toggleGain() {
+    const gains = [5, 10, 20];
+    state.gain = gains[(gains.indexOf(state.gain) + 1) % gains.length];
+    document.getElementById('btn-gain-text').textContent = `${state.gain} mm/mV`;
+    showToast(`Amplituda (Gain): ${state.gain} mm/mV`);
+}
+
+function toggleFilter() {
+    state.filterOn = !state.filterOn;
+    const btn = document.getElementById('btn-filter');
+    const txt = document.getElementById('btn-filter-text');
+    if (state.filterOn) {
+        btn.className = "p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-left";
+        txt.className = "mono font-bold text-emerald-300";
+        txt.textContent = "Yoqilgan";
+        showToast("50Hz tarmoq filtri yoqildi");
+    } else {
+        btn.className = "p-2 rounded-xl bg-amber-950/40 border border-amber-500/40 text-left";
+        txt.className = "mono font-bold text-amber-300";
+        txt.textContent = "O'chirilgan";
+        showToast("50Hz filtr o'chirildi");
+    }
+    checkScenarioProgress();
+}
+
+function togglePrint() {
+    if (!state.power) { showToast("Avval apparatni yoqing!"); return; }
+    state.printing = !state.printing;
+    const btn = document.getElementById('btn-print');
+    const lbl = document.getElementById('print-label');
+    if (state.printing) {
+        lbl.textContent = "Chop etishni to'xtatish";
+        btn.classList.replace('bg-sky-600', 'bg-amber-600');
+        physicalButtons.print.material.emissiveIntensity = 0.65;
+        showToast("Termoprinter ishga tushdi: EKG qog'ozga yozilmoqda...");
+        checkScenarioProgress();
+    } else {
+        lbl.textContent = "Chop etish (3D Printer)";
+        btn.classList.replace('bg-amber-600', 'bg-sky-600');
+        physicalButtons.print.material.emissiveIntensity = 0.14;
+        showToast("Chop etish to'xtatildi");
+    }
+}
+
+function exportECGStripPNG() {
+    const expCanvas = document.createElement('canvas');
+    expCanvas.width = 1400;
+    expCanvas.height = 460;
+    const eCtx = expCanvas.getContext('2d');
+    renderMedicalECGGrid(eCtx, expCanvas.width, expCanvas.height, null, true);
+
+    const link = document.createElement('a');
+    link.download = `EKG_Lenta_AOyatillo_${state.rhythm}_${Date.now()}.png`;
+    link.href = expCanvas.toDataURL('image/png');
+    link.click();
+    showToast("Millimetrli EKG lentasi (PNG) yuklab olindi!");
+}
+
+function toggleElectrode(id) {
+    state.electrodes[id] = !state.electrodes[id];
+    const ok = state.electrodes[id];
+    const mesh = electrodeMeshes[id];
+    const btn = document.getElementById('el-btn-' + id);
+
+    if (ok) {
+        mesh.position.copy(mesh.userData.connectedPos);
+        btn.classList.remove('opacity-40', 'line-through');
+        showToast(`${id} elektrodi bemorga ulandi`);
+    } else {
+        mesh.position.copy(mesh.userData.disconnectedPos);
+        btn.classList.add('opacity-40', 'line-through');
+        showToast(`⚠ ${id} elektrodi uzildi!`);
+    }
+    checkScenarioProgress();
+}
+
+function reconnectAllElectrodes() {
+    Object.keys(state.electrodes).forEach(id => {
+        if (!state.electrodes[id]) toggleElectrode(id);
+    });
+    showToast("Barcha 5 ta elektrod bemorga ulandi");
+}
+
+// --- DEFIBRILLYATOR LOGIKASI ---
+function setDefibEnergy(joules) {
+    state.defib.energy = joules;
+    document.getElementById('defib-energy-label').textContent = `${joules} J`;
+    document.querySelectorAll('.energy-btn').forEach(b => {
+        b.classList.toggle('btn-active', b.textContent === `${joules}J`);
+    });
+}
+
+function chargeDefibrillator() {
+    if (!state.power) { showToast("Avval apparatni yoqing!"); return; }
+    if (state.defib.charging || state.defib.charged) return;
+
+    initAudio();
+    state.defib.charging = true;
+    playDefibChargeSound();
+    const statusTxt = document.getElementById('defib-status-text');
+    statusTxt.textContent = `Zaryadlanmoqda (${state.defib.energy} J)...`;
+    statusTxt.className = "text-[10px] text-center text-amber-300 mono animate-pulse";
+
+    setTimeout(() => {
+        if (!state.power) return;
+        state.defib.charging = false;
+        state.defib.charged = true;
+        statusTxt.textContent = `TAYYOR! ${state.defib.energy} J ZARYADLANDI`;
+        statusTxt.className = "text-[10px] text-center text-rose-400 font-bold mono";
+
+        const shockBtn = document.getElementById('btn-shock');
+        shockBtn.disabled = false;
+        shockBtn.className = "py-2 px-2 rounded-xl font-bold bg-rose-600 hover:bg-rose-500 text-white transition shadow-lg alarm-flash cursor-pointer text-[11px]";
+        physicalButtons.shock.material.emissiveIntensity = 0.85;
+        showToast(`⚡ Defibrillyator ${state.defib.energy} J ga zaryadlandi!`);
+    }, 1450);
+}
+
+function deliverShock() {
+    if (!state.defib.charged) return;
+    initAudio();
+    playDefibShockSound();
+
+    state.defib.charged = false;
+    state.defib.shockAnimating = true;
+    state.defib.shockTimer = 0;
+
+    const overlay = document.getElementById('shock-overlay');
+    overlay.classList.remove('screen-shock-effect');
+    void overlay.offsetWidth;
+    overlay.classList.add('screen-shock-effect');
+
+    const shockBtn = document.getElementById('btn-shock');
+    shockBtn.disabled = true;
+    shockBtn.className = "py-2 px-2 rounded-xl font-bold bg-slate-800 text-slate-500 border border-slate-700 transition cursor-not-allowed text-[11px]";
+    physicalButtons.shock.material.emissiveIntensity = 0.14;
+    document.getElementById('defib-status-text').textContent = "Razryad berildi!";
+    document.getElementById('defib-status-text').className = "text-[10px] text-center text-slate-400 mono";
+
+    if (state.rhythm === 'vfib' || state.rhythm === 'vtach') {
+        changeRhythm('normal');
+        showToast("✓ Razryad muvaffaqiyatli! Sinus ritmi tiklandi!");
+    } else if (state.rhythm === 'asystole') {
+        showToast("Asistoliyada defibrillyatsiya samarasiz (Adrenalin va YUR kerak)");
+    } else {
+        changeRhythm('vtach');
+        showToast("⚠ Diqqat! Noto'g'ri razryad VTach chaqirdi!");
+    }
+    checkScenarioProgress();
+}
+
+function updateHUD() {
+    const info = rhythmInfo[state.rhythm];
+    const bpmEl = document.getElementById('hud-bpm');
+    const spo2El = document.getElementById('hud-spo2');
+    const nibpEl = document.getElementById('hud-nibp');
+
+    if (!state.power) {
+        bpmEl.innerHTML = `-- <small class="text-[11px]">zarba/daq</small>`;
+        spo2El.innerHTML = `--<small class="text-[11px]">%</small>`;
+        nibpEl.innerHTML = `---/---`;
+        return;
+    }
+
+    const isCrit = state.rhythm === 'vfib' || state.rhythm === 'asystole';
+    const curBpm = isCrit ? 0 : state.bpm;
+    bpmEl.innerHTML = `${curBpm} <small class="text-[11px] font-normal">zarba/daq</small>`;
+    bpmEl.className = `mono text-base font-bold ${isCrit || curBpm > 120 || curBpm < 50 ? 'text-rose-400' : 'text-emerald-400'}`;
+    document.getElementById('bpm-val-display').textContent = `${state.bpm} zarba/daq`;
+    spo2El.innerHTML = `${info.spo2}<small class="text-[11px] font-normal">%</small>`;
+    nibpEl.innerHTML = `${info.nibp} <small class="text-[10px] font-normal">mm.sim.ust</small>`;
+}
+
+// ==========================================
+// 10. KLINIK SSENARIYLAR
+// ==========================================
+let activeScenarioId = null;
+let scenarioSeconds = 0;
+let scenarioInterval = null;
+
+function startScenario(id) {
+    activeScenarioId = id;
+    scenarioSeconds = 0;
+    const box = document.getElementById('active-scenario-box');
+    box.classList.remove('hidden');
+
+    if (id === 1) {
+        reconnectAllElectrodes();
+        state.filterOn = true;
+        changeRhythm('stemi');
+        document.getElementById('scen-title').textContent = "1. O'tkir MI va VFib";
+        document.getElementById('scen-story').textContent = "Bemorda o'tkir STEMI kuzatilmoqda. 8 soniyadan so'ng ritm VFib ga o'tadi!";
+        document.getElementById('scen-task').textContent = "Vazifa: VFib boshlanganda defibrillyatorni zaryadlang va Razryad bering!";
+    } else if (id === 2) {
+        reconnectAllElectrodes();
+        changeRhythm('bradycardia');
+        setBPM(38);
+        state.printing = false;
+        document.getElementById('scen-title').textContent = "2. Og'ir bradikardiya";
+        document.getElementById('scen-story').textContent = "Puls 38 zarba/daq gacha tushib ketdi. Atropin yuborilgandan so'ng ritmni tiklang.";
+        document.getElementById('scen-task').textContent = "Vazifa: Ritmni Normal sinus ritmiga o'tkazing va EKG lentasini chop eting!";
+    } else if (id === 3) {
+        changeRhythm('normal');
+        if (state.electrodes.RA) toggleElectrode('RA');
+        if (state.electrodes.V1) toggleElectrode('V1');
+        state.filterOn = false;
+        document.getElementById('btn-filter-text').textContent = "O'chirilgan";
+        document.getElementById('btn-filter').className = "p-2 rounded-xl bg-amber-950/40 border border-amber-500/40 text-left";
+        document.getElementById('scen-title').textContent = "3. Elektrod va shovqin diagnostikasi";
+        document.getElementById('scen-story').textContent = "Monitorda elektrod uzilishi va 50Hz tarmoq shovqini mavjud.";
+        document.getElementById('scen-task').textContent = "Vazifa: RA va V1 elektrodlarni ulang hamda 50Hz filtrni yoqing!";
+    }
+
+    clearInterval(scenarioInterval);
+    scenarioInterval = setInterval(() => {
+        scenarioSeconds++;
+        const mins = String(Math.floor(scenarioSeconds / 60)).padStart(2, '0');
+        const secs = String(scenarioSeconds % 60).padStart(2, '0');
+        document.getElementById('scen-timer').textContent = `${mins}:${secs}`;
+
+        if (activeScenarioId === 1 && scenarioSeconds === 8 && state.rhythm === 'stemi') {
+            changeRhythm('vfib');
+            showToast("⚠ DIQQAT! Bemor VFib holatiga o'tdi! Zudlik bilan razryad bering!");
+        }
+    }, 1000);
+}
+
+function checkScenarioProgress() {
+    if (!activeScenarioId) return;
+    if (activeScenarioId === 1 && state.rhythm === 'normal' && scenarioSeconds >= 8) {
+        showToast("🎉 TABRIKLAYMIZ! Bemor muvaffaqiyatli reanimatsiya qilindi!");
+        stopScenario();
+    } else if (activeScenarioId === 2 && state.rhythm === 'normal' && state.printing) {
+        showToast("🎉 A'LO! Bradikardiya bartaraf etildi va kardiogramma chop etildi!");
+        stopScenario();
+    } else if (activeScenarioId === 3 && state.electrodes.RA && state.electrodes.V1 && state.filterOn) {
+        showToast("🎉 MUKAMMAL! Barcha elektrodlar ulandi va signal tozalandi!");
+        stopScenario();
+    }
+}
+
+function stopScenario() {
+    activeScenarioId = null;
+    clearInterval(scenarioInterval);
+    document.getElementById('active-scenario-box').classList.add('hidden');
+}
+
+// ==========================================
+// 11. TASHXIS TESTI (QUIZ MODE)
+// ==========================================
+let currentQuizRhythm = null;
+let quizScore = 0;
+let quizTotal = 0;
+let quizStreak = 0;
+let quizAnswered = false;
+
+function nextQuizQuestion() {
+    quizAnswered = false;
+    reconnectAllElectrodes();
+    state.filterOn = true;
+    document.getElementById('quiz-feedback').classList.add('hidden');
+
+    const keys = Object.keys(rhythmInfo);
+    const randomKey = keys[Math.floor(Math.random() * keys.length)];
+    currentQuizRhythm = randomKey;
+    changeRhythm(randomKey);
+
+    const others = keys.filter(k => k !== randomKey).sort(() => 0.5 - Math.random()).slice(0, 3);
+    const choices = [randomKey, ...others].sort(() => 0.5 - Math.random());
+
+    const optContainer = document.getElementById('quiz-options');
+    optContainer.innerHTML = '';
+    choices.forEach(cKey => {
+        const btn = document.createElement('button');
+        btn.className = "w-full text-left p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 font-semibold text-slate-100 transition";
+        btn.textContent = rhythmInfo[cKey].name;
+        btn.onclick = () => submitQuizAnswer(cKey, btn);
+        optContainer.appendChild(btn);
+    });
+}
+
+function submitQuizAnswer(selectedKey, clickedBtn) {
+    if (quizAnswered) return;
+    quizAnswered = true;
+    quizTotal++;
+
+    const fb = document.getElementById('quiz-feedback');
+    fb.classList.remove('hidden');
+
+    if (selectedKey === currentQuizRhythm) {
+        quizScore++;
+        quizStreak++;
+        clickedBtn.classList.add('bg-emerald-600/40', 'border-emerald-400');
+        fb.className = "p-3 rounded-xl border border-emerald-500/50 bg-emerald-950/50 text-emerald-200 text-[11px]";
+        fb.innerHTML = `<b>✓ To'g'ri tashxis!</b> ${rhythmInfo[currentQuizRhythm].desc}`;
+    } else {
+        quizStreak = 0;
+        clickedBtn.classList.add('bg-rose-600/40', 'border-rose-400');
+        fb.className = "p-3 rounded-xl border border-rose-500/50 bg-rose-950/50 text-rose-200 text-[11px]";
+        fb.innerHTML = `<b>✗ Noto'g'ri.</b> To'g'ri javob: <u>${rhythmInfo[currentQuizRhythm].name}</u>.<br>${rhythmInfo[currentQuizRhythm].desc}`;
+    }
+    document.getElementById('quiz-score').textContent = `${quizScore} / ${quizTotal}`;
+    document.getElementById('quiz-streak').textContent = `(🔥 ${quizStreak})`;
+}
+
+// ==========================================
+// 12. ASOSIY 60FPS ANIMATSIYA SIKLI
+// ==========================================
+let prevTime = performance.now();
+let sampleAcc = 0;
+let alarmAcc = 0;
+
+function animate(now) {
+    requestAnimationFrame(animate);
+    const dt = Math.min((now - prevTime) / 1000, 0.1);
+    prevTime = now;
+    const timeSec = now / 1000;
+
+    // Bemor ko'krak qafasining tabiiy nafas olish harakati
+    if (!state.defib.shockAnimating) {
+        const breath = state.rhythm === 'asystole' ? 0 : Math.sin(timeSec * 1.6) * 0.016;
+        torsoMesh.scale.set(1.26 + breath * 0.4, 1, 0.74 + breath);
+    }
+
+    if (state.power) {
+        let effBpm = state.bpm;
+        if (state.rhythm === 'afib') {
+            effBpm = state.bpm + Math.sin(timeSec * 3.8) * 24 + Math.cos(timeSec * 6.3) * 15;
+        }
+
+        const beatsPerSec = Math.max(20, effBpm) / 60;
+        const prevPhase = state.phase;
+        state.phase = (state.phase + beatsPerSec * dt) % 1.0;
+
+        if (prevPhase < 0.31 && state.phase >= 0.31) {
+            if (state.rhythm !== 'vfib' && state.rhythm !== 'asystole' &&
+                state.electrodes.RA && state.electrodes.LA && state.electrodes.LL) {
+                playQRSBeep(rhythmInfo[state.rhythm].spo2);
+            }
+        }
+
+        const isDanger = state.rhythm === 'vfib' || state.rhythm === 'asystole' ||
+                         !state.electrodes.RA || !state.electrodes.LA || !state.electrodes.LL;
+        if (isDanger) {
+            alarmAcc += dt;
+            if (alarmAcc > 1.25) {
+                alarmAcc = 0;
+                playAlarmTone();
+            }
+        }
+
+        const samplesPerSec = state.speed === 25 ? 85 : 165;
+        sampleAcc += dt * samplesPerSec;
+
+        while (sampleAcc >= 1) {
+            sampleAcc -= 1;
+            sweepIndex = (sweepIndex + 1) % BUFFER_LEN;
+            allLeadsList.forEach(lead => {
+                leadBuffers[lead][sweepIndex] = calculateECGSample(state.phase, lead, timeSec);
+            });
+            if (state.printing) {
+                paperBuffer.pop();
+                paperBuffer.unshift(leadBuffers['II'][sweepIndex]);
+            }
+        }
+
+        if (state.printing) {
+            state.paperLength = Math.min(1.0, state.paperLength + dt * 0.20);
+            paperMesh.scale.set(1, Math.max(0.04, state.paperLength), 1);
+            paperMesh.position.x = -0.48 - (state.paperLength * 0.28);
+            updatePaperCanvas();
+        }
+    }
+
+    // Defibrillyator dazmollarining bemor ko'kragiga borib-qaytish animatsiyasi
+    if (state.defib.shockAnimating) {
+        state.defib.shockTimer += dt;
+        const chestSternum = new THREE.Vector3(1.18, 1.15, -0.15);
+        const chestApex = new THREE.Vector3(1.48, 1.12, 0.14);
+
+        if (state.defib.shockTimer < 0.45) {
+            paddleSternumGroup.position.lerp(chestSternum, 0.25);
+            paddleApexGroup.position.lerp(chestApex, 0.25);
+            torsoMesh.position.y = 0.96 + Math.sin(state.defib.shockTimer * 40) * 0.025;
+        } else if (state.defib.shockTimer < 1.1) {
+            torsoMesh.position.y = 0.96;
+            paddleSternumGroup.position.lerp(dockSternumPos, 0.15);
+            paddleApexGroup.position.lerp(dockApexPos, 0.15);
+        } else {
+            state.defib.shockAnimating = false;
+            paddleSternumGroup.position.copy(dockSternumPos);
+            paddleApexGroup.position.copy(dockApexPos);
+        }
+    }
+
+    updateMonitorCanvas(timeSec);
+
+    if (targetCamPos && targetLookAt) {
+        camera.position.lerp(targetCamPos, 0.08);
+        controls.target.lerp(targetLookAt, 0.08);
+        if (camera.position.distanceTo(targetCamPos) < 0.02) {
+            targetCamPos = null;
+            targetLookAt = null;
+        }
+    }
+
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+window.onload = function () {
+    initAuthorInfo();
+    updateHUD();
+    updatePaperCanvas();
+    requestAnimationFrame(animate);
+};
+</script>
+</body>
+</html>
